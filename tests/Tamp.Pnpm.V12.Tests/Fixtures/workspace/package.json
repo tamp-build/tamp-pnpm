@@ -1,0 +1,8 @@
+{
+  "name": "ws-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "hello": "node -e \"console.log('root-hello', JSON.stringify(process.argv.slice(1)))\" --"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@fixture/app",
+  "version": "1.0.0",
+  "dependencies": { "@fixture/lib": "workspace:*" },
+  "scripts": {
+    "build": "node -e \"console.log('app-build', JSON.stringify(process.argv.slice(1)))\" --"
+  }
+}
