@@ -27,7 +27,7 @@ public sealed class PnpmTests
     {
         var plan = Pnpm.Install(FakeTool());
         Assert.Equal(new[] { "install", "--frozen-lockfile" }, plan.Arguments);
-        Assert.Equal("/fake/pnpm", plan.Executable);
+        Assert.Equal(AbsolutePath.Create("/fake/pnpm").Value, plan.Executable);
     }
 
     [Fact]
@@ -547,7 +547,7 @@ public sealed class PnpmTests
     public void Corepack_Prefixes_Pnpm()
     {
         var plan = Pnpm.Install(new Tool(AbsolutePath.Create("/fake/corepack")), s => s.SetUseCorepack());
-        Assert.Equal("/fake/corepack", plan.Executable);
+        Assert.Equal(AbsolutePath.Create("/fake/corepack").Value, plan.Executable);
         Assert.Equal(new[] { "pnpm", "install", "--frozen-lockfile" }, plan.Arguments);
     }
 }
