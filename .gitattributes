@@ -1,0 +1,4 @@
+* text=auto
+
+# Live-test workspace fixture: byte-stable on every OS (pnpm-lock.yaml is checked with --frozen-lockfile)
+tests/**/Fixtures/** text eol=lf
