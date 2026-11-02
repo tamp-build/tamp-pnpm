@@ -47,3 +47,6 @@ Thumbs.db
 
 # Node
 node_modules/
+
+# The live-test workspace fixture has a packages/ directory that must be tracked
+!tests/**/Fixtures/workspace/packages/
