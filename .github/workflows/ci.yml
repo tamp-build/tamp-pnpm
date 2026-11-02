@@ -69,13 +69,13 @@ jobs:
             nuget-${{ runner.os }}-
 
       - name: Restore
-        run: dotnet restore Tamp.Pnpm.V12.slnx
+        run: dotnet restore Tamp.Pnpm.slnx
 
       - name: Build
-        run: dotnet build Tamp.Pnpm.V12.slnx --no-restore --configuration Release
+        run: dotnet build Tamp.Pnpm.slnx --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test Tamp.Pnpm.V12.slnx --no-build --configuration Release --logger "trx;LogFileName=test-results.trx" --results-directory ./TestResults
+        run: dotnet test Tamp.Pnpm.slnx --no-build --configuration Release --logger "trx;LogFileName=test-results.trx" --results-directory ./TestResults
 
       - name: Upload test results
         if: always()
