@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-11-03
+
 ### Added
 
 - `install`, `add`, `remove`, `deploy` and `fetch` refuse to plan while the root `package.json` keeps settings in its `pnpm` field that `pnpm-workspace.yaml` doesn't also carry. pnpm 11 and 12 ignore that field with one warning and exit 0, and the SharePoint Framework generator (1.24.x) writes its security overrides (`qs`, `uuid`) there, so a pnpm 12 build silently dropped them. `overrides` must match entry for entry, the old build lists need `allowBuilds`, and other keys need a key of the same name. The error prints the `overrides` block to add. `SetAllowIgnoredPnpmField()` opts out. Closes #4.

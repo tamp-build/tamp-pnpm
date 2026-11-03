@@ -10,7 +10,7 @@
 
 | Package | Status |
 |---|---|
-| `Tamp.Pnpm.V12` | 0.1.0 (initial) |
+| `Tamp.Pnpm.V12` | 0.2.0 |
 
 ```bash
 dotnet add package Tamp.Pnpm.V12
