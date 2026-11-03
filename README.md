@@ -5,7 +5,8 @@
 > - the lockfile mode always stated explicitly, never left to the `CI` variable;
 > - registry credentials passed as redacted secrets through the environment, never `argv`;
 > - the environment variables pnpm 12 actually honours pinned on every command;
-> - `dlx` refusing floating tool versions.
+> - `dlx` refusing floating tool versions;
+> - installs refused while `package.json` keeps settings in its `pnpm` field, which pnpm 12 ignores (the SPFx generator writes its security overrides there).
 
 | Package | Status |
 |---|---|
@@ -77,13 +78,14 @@ Docker layer or offline CI: `Pnpm.Fetch` fills the store from the lockfile alone
 | `Pnpm.SetVersion` | `pnpm version <x.y.z> --no-git-tag-version --allow-same-version --no-git-checks` |
 | `Pnpm.Raw` | `pnpm <args…>`, unvalidated |
 
-Every settings type also has `SetWorkingDirectory`, `SetEnvironmentVariable`, `SetRegistry`, `SetAuthToken`, `SetAuthTokenRegistry`, `SetStoreDir`, `SetReporter`, `SetUseCorepack` and `AddExtraArgument` (flags this wrapper doesn't model, placed before the positional arguments), and there are object-init overloads for each verb. Every flag the wrapper emits was checked against `pnpm help <verb>` for 12.16.1. The one exception is `fetch --offline` / `--prefer-offline`: pnpm accepts them (an unknown flag is a usage error, exit 2) but `pnpm help fetch` doesn't list them.
+Every settings type also has `SetWorkingDirectory`, `SetEnvironmentVariable`, `SetRegistry`, `SetAuthToken`, `SetAuthTokenRegistry`, `SetStoreDir`, `SetReporter`, `SetUseCorepack`, `SetAllowIgnoredPnpmField` and `AddExtraArgument` (flags this wrapper doesn't model, placed before the positional arguments), and there are object-init overloads for each verb. Every flag the wrapper emits was checked against `pnpm help <verb>` for 12.16.1. The one exception is `fetch --offline` / `--prefer-offline`: pnpm accepts them (an unknown flag is a usage error, exit 2) but `pnpm help fetch` doesn't list them.
 
-Validation is eager: mutually exclusive flags (`--prod` with `--dev`, `--offline` with `--prefer-offline`, `--lockfile-only` with `--frozen-lockfile`), a missing script or package, a bad `--audit-level`, `--access` or reporter, and blank filters all throw `InvalidOperationException` when the plan is built.
+Validation is eager: settings stranded in the `package.json` `pnpm` field (see [below](#the-packagejson-pnpm-field-and-spfx)), mutually exclusive flags (`--prod` with `--dev`, `--offline` with `--prefer-offline`, `--lockfile-only` with `--frozen-lockfile`), a missing script or package, a bad `--audit-level`, `--access` or reporter, and blank filters all throw `InvalidOperationException` when the plan is built.
 
 ### Choices worth knowing
 
 - **Frozen lockfile.** pnpm 12 turns `--frozen-lockfile` on when `CI` is set and a lockfile exists, and off otherwise (checked with a drifted manifest: `CI=true` fails, `CI` unset updates the lockfile). The wrapper always emits one of the two flags, and an explicit flag beats the `PNPM_CONFIG_FROZEN_LOCKFILE` variable, `CI`, and `.npmrc` (all checked). `CI` itself is left alone.
+- **The `package.json` `pnpm` field is ignored** by pnpm 11 and 12, with a warning and exit 0. `install`, `add`, `remove`, `deploy` and `fetch` refuse to plan while it holds settings `pnpm-workspace.yaml` doesn't also carry. See [below](#the-packagejson-pnpm-field-and-spfx).
 - **`--filter` that matches nothing exits 0** in pnpm 12 (and 10), so a renamed package silently skips a step. `FailIfNoMatch` is on by default and emits `--fail-if-no-match`.
 - **Script arguments.** `pnpm run build -- --foo` runs the script with `["--", "--foo"]`: pnpm forwards everything after the script name verbatim, in 10 and in 12. So pnpm's own flags go *before* the script name, and script arguments follow it with no separator. An argument such as `--filter` after the script name reaches the script, not pnpm.
 - **`dlx`** accepts `name@1.2.3`, `@scope/name@1.2.3`, with pre-release and build suffixes. It refuses a bare name, `@latest`, ranges, partial versions and non-registry specs unless `AllowUnpinned` is set.
@@ -119,6 +121,43 @@ These were checked by running pnpm 10.34.9 next to 12.16.1:
 - The store directory version went from `store/v10` to `store/v11`, so a cached store from pnpm 10 isn't reused.
 - Unchanged: a `--filter` matching nothing exits 0, and `run` forwards a literal `--` to the script.
 
+## The `package.json` `pnpm` field and SPFx
+
+pnpm 11 and 12 no longer read the `pnpm` field of `package.json`. They print one line, `[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.overrides" …`, and **exit 0**, so the install runs without those settings. The settings now live in `pnpm-workspace.yaml`.
+
+The SharePoint Framework generator (checked in 1.24.0-rc.0, 1.24.0 and 1.24.1) still writes its dependency overrides to `pnpm.overrides` for a pnpm solution, for every component type, and writes them again each time it runs. They're security pins (currently `"qs": ">=6.15.2"` and `"uuid": ">=11.1.1"`), so a pnpm 12 build of an SPFx project would quietly resolve the vulnerable versions.
+
+Checked by overriding a transitive dependency:
+
+| Where the override is | pnpm 9.15.9 | 10.34.9 | 11.28.9 | 12.16.1 |
+|---|---|---|---|---|
+| `package.json` → `pnpm.overrides` (what SPFx writes) | applied | applied | ignored, exit 0 | ignored, exit 0 |
+| `pnpm-workspace.yaml` → `overrides` only | ignored | – | – | applied |
+| Both | applied | applied | – | applied |
+
+With a lockfile from pnpm ≤10 that has the overrides, a frozen install on 12 fails (`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`), but a first install, `--no-frozen-lockfile` and `--lockfile-only` all exit 0 without them.
+
+**What the wrapper does.** Before planning `install`, `add`, `remove`, `deploy` or `fetch`, it reads `package.json` at the workspace root (the nearest directory up from the working directory with `pnpm-workspace.yaml`, else with `package.json`) and refuses when its `pnpm` field holds settings `pnpm-workspace.yaml` lacks:
+
+- `overrides`: each entry must be in `pnpm-workspace.yaml` `overrides` with the same value. A diverged value is refused too (say, a newer SPFx generator bumped one copy).
+- `onlyBuiltDependencies`, `onlyBuiltDependenciesFile`, `neverBuiltDependencies`, `ignoredBuiltDependencies`: pnpm 11 replaced these with `allowBuilds` and ignores the old names in `pnpm-workspace.yaml` too, so `allowBuilds` must be present.
+- Anything else: a key of the same name must be present.
+
+The error lists each problem and prints the `overrides` block to add. `SetAllowIgnoredPnpmField()` skips the check. Other verbs don't check (pnpm 12 already refuses to auto-install from `run` / `exec` in this state). An unreadable `package.json` or `pnpm-workspace.yaml` is left for pnpm to report.
+
+**The fix for a project shared across pnpm versions** is to keep both copies. pnpm 9 and 10 read `package.json`, pnpm 12 reads `pnpm-workspace.yaml`, and all of them write `lockfileVersion: '9.0'`: a lockfile from either side passes a frozen install on the other.
+
+```yaml
+# pnpm-workspace.yaml (pnpm 9 needs the packages entry)
+packages:
+  - .
+overrides:
+  qs: ">=6.15.2"
+  uuid: ">=11.1.1"
+```
+
+Set `"packageManager": "pnpm@12.16.1"` in `package.json` so developer machines and CI run the same pnpm.
+
 ## Tool resolution
 
 ```csharp
@@ -137,7 +176,7 @@ dotnet test                              # unit tests, plus the live tests when 
 dotnet test --filter Category=Live       # live tests only
 ```
 
-The `Live` category runs real pnpm against a two-package workspace (`@fixture/app` → `@fixture/lib` through `workspace:*`, so no registry is needed) and a loopback registry that records headers. Without pnpm 12 on PATH those tests skip. They cover: frozen install with `CI` unset, `true` and `false`; a drifted lockfile failing under every `CI` value; `--filter` runs and verbatim script arguments; the no-match failure; `exec`; `pack`; `fetch` then an offline install; `store path`; the idempotent version stamp in a dirty git tree; and the token and OTP reaching a registry through the environment.
+The `Live` category runs real pnpm against a two-package workspace (`@fixture/app` → `@fixture/lib` through `workspace:*`, so no registry is needed) and a loopback registry that records headers. Without pnpm 12 on PATH those tests skip. They cover: frozen install with `CI` unset, `true` and `false`; a drifted lockfile failing under every `CI` value; `--filter` runs and verbatim script arguments; the no-match failure; `exec`; `pack`; `fetch` then an offline install; `store path`; the idempotent version stamp in a dirty git tree; the token and OTP reaching a registry through the environment; and pnpm 12 ignoring a `pnpm.overrides` override that the same override in `pnpm-workspace.yaml` applies.
 
 ## Not verified
 

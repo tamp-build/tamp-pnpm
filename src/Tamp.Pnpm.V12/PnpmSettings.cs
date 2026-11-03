@@ -49,6 +49,8 @@ public sealed class PnpmInstallSettings : PnpmWorkspaceSettingsBase
     public PnpmInstallSettings SetDevelopment(bool v = true) { Development = v; return this; }
     public PnpmInstallSettings SetLockfileOnly(bool v = true) { LockfileOnly = v; return this; }
 
+    protected override bool ChecksPnpmField => true;
+
     protected override IEnumerable<string> BuildArguments()
     {
         Exclusive.Check(Production, Development, "pnpm install: Production (--prod) and Development (--dev) are mutually exclusive.");
@@ -95,6 +97,8 @@ public sealed class PnpmAddSettings : PnpmWorkspaceSettingsBase
     public PnpmAddSettings SetSaveExact(bool v = true) { SaveExact = v; return this; }
     public PnpmAddSettings SetIgnoreScripts(bool v = true) { IgnoreScripts = v; return this; }
 
+    protected override bool ChecksPnpmField => true;
+
     protected override IEnumerable<string> BuildArguments()
     {
         if (Packages.Count == 0 || Packages.Any(string.IsNullOrWhiteSpace))
@@ -133,6 +137,8 @@ public sealed class PnpmRemoveSettings : PnpmWorkspaceSettingsBase
     public PnpmRemoveSettings SetSaveDev(bool v = true) { SaveDev = v; return this; }
     public PnpmRemoveSettings SetSaveOptional(bool v = true) { SaveOptional = v; return this; }
     public PnpmRemoveSettings SetSaveProd(bool v = true) { SaveProd = v; return this; }
+
+    protected override bool ChecksPnpmField => true;
 
     protected override IEnumerable<string> BuildArguments()
     {
@@ -353,6 +359,8 @@ public sealed class PnpmFetchSettings : PnpmSettingsBase
     public PnpmFetchSettings SetIgnorePnpmfile(bool v = true) { IgnorePnpmfile = v; return this; }
     public PnpmFetchSettings SetOffline(bool v = true) { Offline = v; return this; }
     public PnpmFetchSettings SetPreferOffline(bool v = true) { PreferOffline = v; return this; }
+
+    protected override bool ChecksPnpmField => true;
 
     protected override IEnumerable<string> BuildArguments()
     {
@@ -603,6 +611,8 @@ public sealed class PnpmDeploySettings : PnpmWorkspaceSettingsBase
     public PnpmDeploySettings SetPreferOffline(bool v = true) { PreferOffline = v; return this; }
     public PnpmDeploySettings SetIgnoreScripts(bool v = true) { IgnoreScripts = v; return this; }
     public PnpmDeploySettings SetLegacy(bool v = true) { Legacy = v; return this; }
+
+    protected override bool ChecksPnpmField => true;
 
     protected override IEnumerable<string> BuildArguments()
     {
