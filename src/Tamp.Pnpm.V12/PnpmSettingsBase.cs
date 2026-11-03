@@ -65,6 +65,14 @@ public abstract class PnpmSettingsBase
     /// <summary>Arguments added after the typed flags and before positional arguments, for flags this wrapper doesn't model. One argv token each.</summary>
     public List<string> ExtraArguments { get; } = new();
 
+    /// <summary>
+    /// Plan <c>install</c>, <c>add</c>, <c>remove</c>, <c>deploy</c> or <c>fetch</c> even though the root
+    /// <c>package.json</c> keeps settings in its <c>pnpm</c> field that <c>pnpm-workspace.yaml</c> lacks. Off by
+    /// default: pnpm 12 ignores that field, warns once and exits 0, so the build would run without those settings (for an
+    /// SPFx project, its security overrides). Other verbs never check.
+    /// </summary>
+    public bool AllowIgnoredPnpmField { get; set; }
+
     /// <summary>Subclasses build the per-verb argument list. The verb token(s) come first.</summary>
     protected abstract IEnumerable<string> BuildArguments();
 
@@ -76,6 +84,12 @@ public abstract class PnpmSettingsBase
 
     /// <summary>The capability tier of the verb. External mutation (publish) is <see cref="CapabilityTier.SideEffectful"/>.</summary>
     protected virtual CapabilityTier Capability => CapabilityTier.Safe;
+
+    /// <summary>
+    /// True for verbs that resolve or fetch dependencies, which pnpm 12 runs without the settings left in the
+    /// <c>package.json</c> <c>pnpm</c> field. Those verbs check the field when the plan is built (see <see cref="AllowIgnoredPnpmField"/>).
+    /// </summary>
+    protected virtual bool ChecksPnpmField => false;
 
     /// <summary>Arguments shared by every verb, appended after the verb's own flags.</summary>
     protected IEnumerable<string> CommonArguments()
@@ -96,6 +110,10 @@ public abstract class PnpmSettingsBase
         var args = new List<string>();
         if (UseCorepack) args.Add("pnpm");
         args.AddRange(BuildArguments());
+
+        var workingDirectory = WorkingDirectory ?? tool.WorkingDirectory;
+        if (ChecksPnpmField && !AllowIgnoredPnpmField)
+            PnpmFieldGuard.Check(workingDirectory ?? Directory.GetCurrentDirectory(), args[UseCorepack ? 1 : 0]);
 
         var env = new Dictionary<string, string>(EnvironmentVariables, StringComparer.Ordinal)
         {
@@ -121,7 +139,7 @@ public abstract class PnpmSettingsBase
             Executable = tool.Executable.Value,
             Arguments = args,
             Environment = env,
-            WorkingDirectory = WorkingDirectory ?? tool.WorkingDirectory,
+            WorkingDirectory = workingDirectory,
             Secrets = secrets,
             RequiredCapability = Capability,
         };
@@ -170,6 +188,7 @@ public static class PnpmSettingsBaseExtensions
     public static T SetReporter<T>(this T s, string? reporter) where T : PnpmSettingsBase { s.Reporter = reporter; return s; }
     public static T SetUseCorepack<T>(this T s, bool v = true) where T : PnpmSettingsBase { s.UseCorepack = v; return s; }
     public static T AddExtraArgument<T>(this T s, string arg) where T : PnpmSettingsBase { s.ExtraArguments.Add(arg); return s; }
+    public static T SetAllowIgnoredPnpmField<T>(this T s, bool v = true) where T : PnpmSettingsBase { s.AllowIgnoredPnpmField = v; return s; }
 }
 
 /// <summary>

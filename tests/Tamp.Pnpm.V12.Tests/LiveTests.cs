@@ -312,6 +312,60 @@ public sealed class LiveTests
         lock (reg.Requests) Assert.Contains(reg.Requests, q => q.Path.Contains("fakepkg-zz"));
     }
 
+    /// <summary>
+    /// A registry-free override case: <c>mid</c> depends on <c>leaf</c> 1.0.0, and the override points <c>leaf</c> at
+    /// 2.0.0. Both are local <c>file:</c> packages.
+    /// </summary>
+    private static string OverrideProject(TempDir tmp, string name, bool workspaceCopy)
+    {
+        var dir = tmp.Dir(name);
+        void Write(string rel, string json)
+        {
+            var path = Path.Combine(dir, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, json);
+        }
+        Write("vendor/v1/package.json", """{ "name": "leaf", "version": "1.0.0" }""");
+        Write("vendor/v2/package.json", """{ "name": "leaf", "version": "2.0.0" }""");
+        Write("vendor/mid/package.json", """{ "name": "mid", "version": "1.0.0", "dependencies": { "leaf": "file:../v1" } }""");
+        Write("package.json", """
+            { "name": "root", "version": "1.0.0", "dependencies": { "mid": "file:./vendor/mid" },
+              "pnpm": { "overrides": { "leaf": "file:./vendor/v2" } } }
+            """);
+        if (workspaceCopy)
+            Write("pnpm-workspace.yaml", "packages:\n  - .\noverrides:\n  leaf: file:./vendor/v2\n");
+        return dir;
+    }
+
+    private static string InstalledLeafVersion(string dir) =>
+        System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "node_modules", ".pnpm", "node_modules", "leaf", "package.json")))
+            .RootElement.GetProperty("version").GetString()!;
+
+    [LiveFact]
+    public void Pnpm12_Ignores_The_PackageJson_Pnpm_Field_And_Exits_Zero()
+    {
+        // Why the guard exists (#4). If a future pnpm 12 reads the field again, this fails and the guard can be relaxed.
+        using var tmp = new TempDir();
+        var dir = OverrideProject(tmp, "field-only", workspaceCopy: false);
+        Assert.Throws<InvalidOperationException>(() => Pnpm.Install(P, s => s.SetWorkingDirectory(dir).SetNoFrozenLockfile()));
+
+        var r = Live.Run(Pnpm.Install(P, s => s.SetWorkingDirectory(dir).SetNoFrozenLockfile()
+            .SetStoreDir(tmp.Dir("store")).SetAllowIgnoredPnpmField()));
+        Assert.Equal(0, r.ExitCode);
+        Assert.Contains("pnpm.overrides", Live.All(r));
+        Assert.Equal("1.0.0", InstalledLeafVersion(dir));
+    }
+
+    [LiveFact]
+    public void Override_Kept_In_Both_Places_Passes_The_Guard_And_Applies()
+    {
+        using var tmp = new TempDir();
+        var dir = OverrideProject(tmp, "dual", workspaceCopy: true);
+        var r = Live.Run(Pnpm.Install(P, s => s.SetWorkingDirectory(dir).SetNoFrozenLockfile().SetStoreDir(tmp.Dir("store"))));
+        Assert.True(r.ExitCode == 0, Live.All(r));
+        Assert.Equal("2.0.0", InstalledLeafVersion(dir));
+    }
+
     [LiveFact]
     public void Otp_Reaches_Registry_As_Header_Via_Env()
     {
